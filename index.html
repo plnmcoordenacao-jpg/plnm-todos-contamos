@@ -2333,6 +2333,9 @@ body.plnm-inside-julio .ws-stats-access-link svg{width:16px;height:16px;fill:non
 </button>
 <script id="back-to-entry-script">
 function backToPLNMEntry(){
+ // A utilizadora escolheu regressar à entrada: não reabrir automaticamente.
+ try { sessionStorage.removeItem('plnmEscola'); } catch(e) {}
+ try { localStorage.removeItem('plnmRegressoPendente'); } catch(e) {}
  var landing=document.getElementById('plnmLanding');
  if(landing){
    landing.style.display='block';
@@ -2363,7 +2366,21 @@ function backToPLNMEntry(){
   function abrirPainelSePedido(){
     try {
       var parametros = new URLSearchParams(window.location.search);
-      if(parametros.get('painel') === '1' && typeof window.plnmEnter === 'function') {
+      // Regresso explícito (?painel=1) OU regresso à mesma sessão de trabalho.
+      // O segundo caso corrige o botão "Voltar ao painel" das aplicações DT
+      // que regressam ao endereço base do GitHub Pages.
+      var regressoExplicito = parametros.get('painel') === '1';
+      var jaEstavaNoPainel = false;
+      try { jaEstavaNoPainel = sessionStorage.getItem('plnmEscola') === 'julio'; } catch (e) {}
+      // As aplicações Google podem regressar num separador diferente.
+      // O marcador temporário funciona entre separadores do mesmo perfil Chrome.
+      var retornoDeAplicacao = false;
+      try {
+        var momento = Number(localStorage.getItem('plnmRegressoPendente') || 0);
+        retornoDeAplicacao = momento > 0 && Date.now() - momento < 2 * 60 * 60 * 1000;
+        if (retornoDeAplicacao || momento) localStorage.removeItem('plnmRegressoPendente');
+      } catch (e) {}
+      if ((regressoExplicito || jaEstavaNoPainel || retornoDeAplicacao) && typeof window.plnmEnter === 'function') {
         window.plnmEnter('julio');
       }
     } catch (e) { /* A entrada normal permanece disponível. */ }
@@ -2376,24 +2393,29 @@ function backToPLNMEntry(){
 })();
 </script>
 
-<!-- Navegação PLNM: os links abrem no mesmo separador.
-     O endereço de regresso é passado aos Indicadores apenas quando o Portal
-     tem um URL HTTP(S); ficheiros locais continuam a permitir o Voltar do Chrome. -->
-<script>
+<!-- Navegação consistente: abrir as aplicações no separador atual. -->
+<script id="plnm-navegacao-mesmo-separador">
 (function () {
-  var link = document.querySelector('a.ws-stats-access-link');
-  if (!link) return;
-  link.addEventListener('click', function () {
+  document.addEventListener('click', function (evento) {
+    if (evento.defaultPrevented || evento.button !== 0 ||
+        evento.ctrlKey || evento.metaKey || evento.shiftKey || evento.altKey) return;
+    var origem = evento.target;
+    if (!origem || !origem.closest) return;
+    var link = origem.closest('a[href]');
+    if (!link || link.hasAttribute('download')) return;
+    var href = link.getAttribute('href') || '';
+    if (!/^https?:\/\//i.test(href)) return;
+    // Apenas links externos HTTP(S); âncoras do próprio Portal não são alteradas.
+    // Guarda temporariamente o regresso das aplicações Google, mesmo se elas
+    // abrirem um novo separador por decisão do próprio Google.
     try {
-      var portal = new URL(window.location.href);
-      if (portal.protocol !== 'https:' && portal.protocol !== 'http:') return;
-      portal.search = '?painel=1';
-      portal.hash = '';
-      var destino = new URL(link.getAttribute('href'));
-      destino.searchParams.set('regresso', portal.href);
-      link.href = destino.href;
-    } catch (e) { /* Sem alterar a ligação original. */ }
-  });
+      if (new URL(link.href).hostname === 'script.google.com') {
+        localStorage.setItem('plnmRegressoPendente', String(Date.now()));
+      }
+    } catch (e) {}
+    evento.preventDefault();
+    window.location.assign(link.href);
+  }, true);
 })();
 </script>
 </body>
